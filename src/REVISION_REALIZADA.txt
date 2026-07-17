@@ -1,0 +1,11 @@
+REVISIÓN DEL PROYECTO REAL
+
+Problemas encontrados y corregidos:
+1. numerosSalidos se cargaba completo, pero luego otro useEffect lo reemplazaba con una lista parcial basada en las jugadas. Eso hacía que el tablero mostrara 0 o perdiera números.
+2. La pantalla Números salidos reemplazaba el mismo estado global por los datos de una sola semana. Al volver al Dashboard faltaban resultados.
+3. Se podían cargar resultados en una semana cerrada. En las capturas los resultados estaban asociados a “jaimito — cerrada”, mientras el Dashboard mostraba la semana abierta. Ahora las semanas cerradas quedan deshabilitadas para nuevas cargas.
+4. Se agregó fecha de inicio y fin al selector para distinguir semanas con nombres iguales.
+5. Se eliminó una prop sin uso en JugadasPage.
+
+IMPORTANTE:
+Los números que ya fueron guardados en una semana cerrada siguen perteneciendo a esa semana. No deben marcarse en el tablero de otra semana abierta. Para usarlos en la semana actual hay que cargarlos en la semana abierta o corregir sus semana_id en Supabase.
