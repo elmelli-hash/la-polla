@@ -146,6 +146,7 @@ function App() {
   const [subiendoComprobante, setSubiendoComprobante] =
     useState(false);
   const [mensajeComprobante, setMensajeComprobante] = useState("");
+  const [mensajeExitoComprobante, setMensajeExitoComprobante] = useState("");
   const [observacionesComprobantes, setObservacionesComprobantes] =
     useState<Record<string, string>>({});
   const [autorizacionesJuego, setAutorizacionesJuego] =
@@ -1347,6 +1348,7 @@ function App() {
     if (!usuario) return;
 
     setMensajeComprobante("");
+    setMensajeExitoComprobante("");
 
     if (!semanaComprobante) {
       setMensajeComprobante("Seleccioná una semana");
@@ -1359,16 +1361,26 @@ function App() {
 
     if (!semana || semana.estado !== "abierta") {
       setMensajeComprobante(
-        "La semana está cerrada. No se puede subir el comprobante."
+        "La semana está cerrada. No se puede subir ni reemplazar el comprobante."
       );
       return;
     }
 
-    const comprobanteExistente = comprobantes.some(
-      (item) =>
-        item.usuario_id === usuario.id &&
-        item.semana_id === semanaComprobante
-    );
+    const { data: comprobanteExistente, error: errorConsultaExistente } =
+      await supabase
+        .from("comprobantes")
+        .select("id")
+        .eq("usuario_id", usuario.id)
+        .eq("semana_id", semanaComprobante)
+        .maybeSingle();
+
+    if (errorConsultaExistente) {
+      setMensajeComprobante(
+        "No se pudo verificar si ya existe un comprobante: " +
+          errorConsultaExistente.message
+      );
+      return;
+    }
 
     if (comprobanteExistente) {
       setMensajeComprobante(
@@ -1456,7 +1468,7 @@ function App() {
     setReinicioArchivoComprobante((valor) => valor + 1);
     setSubiendoComprobante(false);
     await cargarComprobantes();
-    setMensajeComprobante(
+    setMensajeExitoComprobante(
       "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada."
     );
   };
@@ -2693,8 +2705,8 @@ function App() {
                   </label>
 
                   <p className="ayuda-comprobante">
-                    Tamaño máximo: 10 MB. Solo se permite un comprobante
-                    por usuario y por semana.
+                    Tamaño máximo: 10 MB. Podés reemplazarlo únicamente
+                    mientras la semana esté abierta.
                   </p>
 
                   <button
@@ -2706,6 +2718,27 @@ function App() {
                       ? "Subiendo..."
                       : "Enviar comprobante"}
                   </button>
+
+                  {mensajeExitoComprobante && (
+                    <div
+                      role="alert"
+                      aria-live="assertive"
+                      style={{
+                        marginTop: "16px",
+                        padding: "16px",
+                        borderRadius: "12px",
+                        border: "2px solid #39c56b",
+                        background: "rgba(28, 160, 80, 0.20)",
+                        color: "#7ff0a5",
+                        fontSize: "18px",
+                        fontWeight: 800,
+                        lineHeight: 1.4,
+                        textAlign: "center",
+                      }}
+                    >
+                      {mensajeExitoComprobante}
+                    </div>
+                  )}
                 </div>
               )}
 
