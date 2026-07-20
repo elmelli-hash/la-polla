@@ -32,7 +32,14 @@ const formatearFecha = (fecha?: string | null) => {
 const formatearFechaHora = (fecha?: string | null) => {
   if (!fecha) return "Sin fecha";
 
-  const valor = new Date(fecha);
+  // Supabase puede devolver timestamps sin indicar la zona horaria.
+  // En ese caso, el valor está guardado en UTC y agregamos la Z para
+  // evitar que Chrome lo interprete erróneamente como hora local.
+  const fechaNormalizada = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(fecha)
+    ? fecha
+    : `${fecha}Z`;
+
+  const valor = new Date(fechaNormalizada);
 
   if (Number.isNaN(valor.getTime())) return "Sin fecha";
 
