@@ -1472,9 +1472,11 @@ function App() {
     setReinicioArchivoComprobante((valor) => valor + 1);
     setSubiendoComprobante(false);
     await cargarComprobantes();
-    setMensajeComprobante(
-      "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada."
-    );
+    const mensajeExito =
+      "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada.";
+
+    setMensajeComprobante(mensajeExito);
+    window.alert(mensajeExito);
   };
 
   const abrirComprobante = async (item: Comprobante) => {
@@ -2746,6 +2748,39 @@ function App() {
                         ? "Comprobante ya enviado"
                         : "Enviar comprobante"}
                   </button>
+
+                  {mensajeComprobante && (
+                    <div
+                      role="alert"
+                      aria-live="assertive"
+                      style={{
+                        marginTop: "16px",
+                        padding: "16px 18px",
+                        borderRadius: "12px",
+                        border: mensajeComprobante.toLowerCase().includes("no se pudo") ||
+                          mensajeComprobante.toLowerCase().includes("cerrada") ||
+                          mensajeComprobante.toLowerCase().includes("elegí") ||
+                          mensajeComprobante.toLowerCase().includes("seleccioná") ||
+                          mensajeComprobante.toLowerCase().includes("ya tenés")
+                          ? "2px solid #ef5350"
+                          : "2px solid #39c56b",
+                        background: mensajeComprobante.toLowerCase().includes("no se pudo") ||
+                          mensajeComprobante.toLowerCase().includes("cerrada") ||
+                          mensajeComprobante.toLowerCase().includes("elegí") ||
+                          mensajeComprobante.toLowerCase().includes("seleccioná") ||
+                          mensajeComprobante.toLowerCase().includes("ya tenés")
+                          ? "rgba(211, 47, 47, 0.20)"
+                          : "rgba(28, 160, 80, 0.20)",
+                        color: "#ffffff",
+                        fontSize: "18px",
+                        fontWeight: 800,
+                        lineHeight: 1.4,
+                        textAlign: "center",
+                      }}
+                    >
+                      {mensajeComprobante}
+                    </div>
+                  )}
                 </div>
               )}
 
