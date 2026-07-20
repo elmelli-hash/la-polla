@@ -12,6 +12,7 @@ import type {
   Usuario,
 } from "./types";
 import { numerosVacios } from "./utils/juego";
+import { activarNotificacionesPush } from "./services/notificaciones";
 import DashboardAdmin from "./pages/Admin/DashboardAdmin";
 import DashboardUsuario from "./pages/Usuario/DashboardUsuario";
 import UsuariosAdmin from "./pages/Admin/UsuariosAdmin";
@@ -91,6 +92,8 @@ function App() {
   const [cargando, setCargando] = useState(false);
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [cargandoSesion, setCargandoSesion] = useState(true);
+  const [activandoNotificaciones, setActivandoNotificaciones] = useState(false);
+  const [mensajeNotificaciones, setMensajeNotificaciones] = useState("");
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombreRegistro, setNombreRegistro] = useState("");
   const [confirmarPassword, setConfirmarPassword] = useState("");
@@ -175,27 +178,75 @@ function App() {
     [semanas]
   );
 
-  const recuperarUsuarioSesion = async (correoSesion: string) => {
-    const correo = correoSesion.trim().toLowerCase();
-
+  const cargarPerfilPorCorreo = async (correo: string) => {
     const { data, error } = await supabase
       .from("usuarios")
       .select(
         "id, nombre, email, rol, habilitado, aprobado, max_jugadas_semana"
       )
-      .ilike("email", correo)
+      .ilike("email", correo.trim().toLowerCase())
       .limit(1)
       .maybeSingle();
 
     if (error || !data || !data.aprobado || !data.habilitado) {
       setUsuario(null);
-      await supabase.auth.signOut();
-      return false;
+      return null;
     }
 
-    setUsuario(data as Usuario);
-    setMensaje("");
-    return true;
+    const perfil = data as Usuario;
+    setUsuario(perfil);
+    return perfil;
+  };
+
+  useEffect(() => {
+    let activo = true;
+
+    const restaurarSesion = async () => {
+      const { data } = await supabase.auth.getSession();
+      const correo = data.session?.user?.email;
+
+      if (activo && correo) {
+        const perfil = await cargarPerfilPorCorreo(correo);
+        if (!perfil) await supabase.auth.signOut();
+      }
+
+      if (activo) setCargandoSesion(false);
+    };
+
+    restaurarSesion();
+
+    const { data: suscripcion } = supabase.auth.onAuthStateChange(
+      async (_evento, sesion) => {
+        if (!activo) return;
+
+        const correo = sesion?.user?.email;
+        if (!correo) {
+          setUsuario(null);
+          setCargandoSesion(false);
+          return;
+        }
+
+        await cargarPerfilPorCorreo(correo);
+        setCargandoSesion(false);
+      }
+    );
+
+    return () => {
+      activo = false;
+      suscripcion.subscription.unsubscribe();
+    };
+  }, []);
+
+  const activarNotificaciones = async () => {
+    if (!usuario) return;
+
+    setActivandoNotificaciones(true);
+    setMensajeNotificaciones("Activando notificaciones...");
+
+    const resultado = await activarNotificacionesPush(usuario.id);
+
+    setMensajeNotificaciones(resultado.mensaje);
+    setActivandoNotificaciones(false);
   };
 
   const login = async () => {
@@ -1889,55 +1940,6 @@ function App() {
     "Semana desconocida";
 
   useEffect(() => {
-    let activo = true;
-
-    const restaurarSesion = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-
-        if (error || !data.session?.user?.email) {
-          if (activo) setUsuario(null);
-          return;
-        }
-
-        if (activo) {
-          await recuperarUsuarioSesion(data.session.user.email);
-        }
-      } finally {
-        if (activo) setCargandoSesion(false);
-      }
-    };
-
-    void restaurarSesion();
-
-    const { data: suscripcion } = supabase.auth.onAuthStateChange(
-      (evento, sesion) => {
-        if (!activo) return;
-
-        if (evento === "SIGNED_OUT" || !sesion?.user?.email) {
-          setUsuario(null);
-          setCargandoSesion(false);
-          return;
-        }
-
-        if (evento === "SIGNED_IN" || evento === "TOKEN_REFRESHED") {
-          window.setTimeout(() => {
-            if (!activo) return;
-            void recuperarUsuarioSesion(sesion.user.email ?? "").finally(() => {
-              if (activo) setCargandoSesion(false);
-            });
-          }, 0);
-        }
-      }
-    );
-
-    return () => {
-      activo = false;
-      suscripcion.subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
     if (!usuario) return;
 
     if (seccion === "dashboard") {
@@ -2259,10 +2261,51 @@ function App() {
               <p>Bienvenido, {usuario.nombre}</p>
             </div>
 
-            <span className="rol">
-              {esAdmin ? "Administrador" : "Usuario"}
-            </span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={activarNotificaciones}
+                disabled={activandoNotificaciones}
+                title="Activar notificaciones en este dispositivo"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  borderRadius: "10px",
+                  padding: "9px 12px",
+                  cursor: activandoNotificaciones ? "wait" : "pointer",
+                }}
+              >
+                {activandoNotificaciones
+                  ? "Activando..."
+                  : "🔔 Activar notificaciones"}
+              </button>
+
+              <span className="rol">
+                {esAdmin ? "Administrador" : "Usuario"}
+              </span>
+            </div>
           </header>
+
+          {mensajeNotificaciones && (
+            <div
+              role="status"
+              style={{
+                marginBottom: "14px",
+                padding: "12px 14px",
+                borderRadius: "10px",
+                background: "rgba(255,255,255,0.08)",
+              }}
+            >
+              {mensajeNotificaciones}
+            </div>
+          )}
 
           {semanaTablero && (
             <section className="pozo-destacado">
