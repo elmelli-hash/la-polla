@@ -1464,9 +1464,11 @@ function App() {
 
     setArchivoComprobante(null);
     setReinicioArchivoComprobante((valor) => valor + 1);
-    setMensajeComprobante("Comprobante subido exitosamente");
     setSubiendoComprobante(false);
     await cargarComprobantes();
+    setMensajeComprobante(
+      "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada."
+    );
   };
 
   const abrirComprobante = async (item: Comprobante) => {
