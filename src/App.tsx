@@ -168,6 +168,16 @@ function App() {
     [semanas]
   );
 
+  const comprobanteSemanaSeleccionada = useMemo(
+    () =>
+      comprobantes.find(
+        (item) =>
+          item.usuario_id === usuario?.id &&
+          item.semana_id === semanaComprobante
+      ) ?? null,
+    [comprobantes, semanaComprobante, usuario?.id]
+  );
+
   const login = async () => {
     if (!email.trim() || !password) {
       setMensaje("Completá el correo y la contraseña");
@@ -1305,7 +1315,6 @@ function App() {
     if (!usuario) return;
 
     setCargandoComprobantes(true);
-    setMensajeComprobante("");
 
     let consulta = supabase
       .from("comprobantes")
@@ -1355,7 +1364,31 @@ function App() {
 
     if (!semana || semana.estado !== "abierta") {
       setMensajeComprobante(
-        "La semana está cerrada. No se puede subir ni reemplazar el comprobante."
+        "La semana está cerrada. No se puede subir el comprobante."
+      );
+      return;
+    }
+
+    const { data: comprobanteExistente, error: errorVerificacion } =
+      await supabase
+        .from("comprobantes")
+        .select("id, estado")
+        .eq("usuario_id", usuario.id)
+        .eq("semana_id", semanaComprobante)
+        .limit(1)
+        .maybeSingle();
+
+    if (errorVerificacion) {
+      setMensajeComprobante(
+        "No se pudo verificar si ya existe un comprobante: " +
+          errorVerificacion.message
+      );
+      return;
+    }
+
+    if (comprobanteExistente) {
+      setMensajeComprobante(
+        "Ya tenés un comprobante subido para esta semana. Solo se permite un comprobante por usuario y por semana."
       );
       return;
     }
@@ -1412,44 +1445,17 @@ function App() {
       return;
     }
 
-    const existente = comprobantes.find(
-      (item) =>
-        item.usuario_id === usuario.id &&
-        item.semana_id === semanaComprobante
-    );
+    const resultado = await supabase
+      .from("comprobantes")
+      .insert({
+        usuario_id: usuario.id,
+        semana_id: semanaComprobante,
+        archivo_url: ruta,
+        estado: "pendiente",
+        observacion: null,
+      });
 
-    let errorBase = null;
-
-    if (existente) {
-      const resultado = await supabase
-        .from("comprobantes")
-        .update({
-          archivo_url: ruta,
-          estado: "pendiente",
-          observacion: null,
-        })
-        .eq("id", existente.id);
-
-      errorBase = resultado.error;
-
-      if (!errorBase && existente.archivo_url) {
-        await supabase.storage
-          .from("Comprobantes")
-          .remove([existente.archivo_url]);
-      }
-    } else {
-      const resultado = await supabase
-        .from("comprobantes")
-        .insert({
-          usuario_id: usuario.id,
-          semana_id: semanaComprobante,
-          archivo_url: ruta,
-          estado: "pendiente",
-          observacion: null,
-        });
-
-      errorBase = resultado.error;
-    }
+    const errorBase = resultado.error;
 
     if (errorBase) {
       await supabase.storage.from("Comprobantes").remove([ruta]);
@@ -2688,12 +2694,31 @@ function App() {
                     </select>
                   </label>
 
+                  {comprobanteSemanaSeleccionada && (
+                    <div
+                      role="status"
+                      style={{
+                        margin: "4px 0 16px",
+                        padding: "14px 16px",
+                        borderRadius: "12px",
+                        border: "2px solid #f0b429",
+                        background: "rgba(240, 180, 41, 0.16)",
+                        color: "#ffd36a",
+                        fontWeight: 800,
+                        textAlign: "center",
+                      }}
+                    >
+                      Ya hay un comprobante subido para esta semana. No podés subir otro.
+                    </div>
+                  )}
+
                   <label>
                     Archivo JPG, PNG o PDF
                     <input
                       key={reinicioArchivoComprobante}
                       type="file"
                       accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                      disabled={Boolean(comprobanteSemanaSeleccionada)}
                       onChange={(e) =>
                         setArchivoComprobante(
                           e.target.files?.[0] ?? null
@@ -2703,18 +2728,23 @@ function App() {
                   </label>
 
                   <p className="ayuda-comprobante">
-                    Tamaño máximo: 10 MB. Podés reemplazarlo únicamente
-                    mientras la semana esté abierta.
+                    Tamaño máximo: 10 MB. Se permite un solo comprobante
+                    por usuario y por semana.
                   </p>
 
                   <button
                     className="guardar"
                     onClick={subirComprobante}
-                    disabled={subiendoComprobante}
+                    disabled={
+                      subiendoComprobante ||
+                      Boolean(comprobanteSemanaSeleccionada)
+                    }
                   >
                     {subiendoComprobante
                       ? "Subiendo..."
-                      : "Enviar comprobante"}
+                      : comprobanteSemanaSeleccionada
+                        ? "Comprobante ya enviado"
+                        : "Enviar comprobante"}
                   </button>
                 </div>
               )}
