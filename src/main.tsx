@@ -1,8 +1,15 @@
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import ErrorBoundary from './ErrorBoundary'
 
 window.addEventListener('error', (event) => {
+  const detalle =
+    event.error?.stack ||
+    event.error?.message ||
+    event.message ||
+    'Error desconocido'
+
   document.body.innerHTML = `
     <div style="
       background:#111;
@@ -11,10 +18,15 @@ window.addEventListener('error', (event) => {
       min-height:100vh;
       font-family:monospace;
       white-space:pre-wrap;
+      overflow-wrap:anywhere;
     ">
       ERROR JAVASCRIPT
 
+      Mensaje:
       ${event.message}
+
+      Detalle:
+      ${detalle}
 
       Archivo:
       ${event.filename}
@@ -26,6 +38,11 @@ window.addEventListener('error', (event) => {
 })
 
 window.addEventListener('unhandledrejection', (event) => {
+  const motivo =
+    event.reason?.stack ||
+    event.reason?.message ||
+    String(event.reason)
+
   document.body.innerHTML = `
     <div style="
       background:#111;
@@ -34,13 +51,23 @@ window.addEventListener('unhandledrejection', (event) => {
       min-height:100vh;
       font-family:monospace;
       white-space:pre-wrap;
+      overflow-wrap:anywhere;
     ">
       PROMESA RECHAZADA
 
-      ${String(event.reason?.stack || event.reason)}
+      ${motivo}
     </div>
   `
 })
-createRoot(document.getElementById('root')!).render(
-  <App />
+
+const root = document.getElementById('root')
+
+if (!root) {
+  throw new Error('No se encontró el elemento root')
+}
+
+createRoot(root).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
 )
