@@ -32,28 +32,23 @@ const formatearFecha = (fecha?: string | null) => {
 const formatearFechaHora = (fecha?: string | null) => {
   if (!fecha) return "Sin fecha";
 
-  // Los timestamps de Supabase se guardan en UTC.
-  // Esta conversión aplica UTC-3 manualmente para que el resultado no
-  // dependa de cómo Chrome interprete la zona horaria del dispositivo.
   const fechaNormalizada = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(fecha)
     ? fecha
     : `${fecha}Z`;
 
-  const fechaUtc = new Date(fechaNormalizada);
+  const valor = new Date(fechaNormalizada);
 
-  if (Number.isNaN(fechaUtc.getTime())) return "Sin fecha";
+  if (Number.isNaN(valor.getTime())) return "Sin fecha";
 
-  const fechaArgentina = new Date(
-    fechaUtc.getTime() - 3 * 60 * 60 * 1000
-  );
-
-  const dia = String(fechaArgentina.getUTCDate()).padStart(2, "0");
-  const mes = String(fechaArgentina.getUTCMonth() + 1).padStart(2, "0");
-  const anio = fechaArgentina.getUTCFullYear();
-  const hora = String(fechaArgentina.getUTCHours()).padStart(2, "0");
-  const minutos = String(fechaArgentina.getUTCMinutes()).padStart(2, "0");
-
-  return `${dia}/${mes}/${anio}, ${hora}:${minutos}`;
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: ZONA_HORARIA_ARGENTINA,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(valor);
 };
 
 const obtenerFechaArgentinaISO = () => {
