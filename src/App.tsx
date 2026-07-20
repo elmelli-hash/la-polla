@@ -2578,6 +2578,35 @@ function App() {
 
           {seccion === "comprobantes" && (
             <section className="comprobantes-seccion">
+              {mensajeComprobante && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    margin: "0 0 24px",
+                    padding: "18px 20px",
+                    borderRadius: "14px",
+                    border: mensajeComprobante.toLowerCase().includes("cerrada")
+                      ? "2px solid #ef5350"
+                      : "2px solid #39c56b",
+                    background: mensajeComprobante.toLowerCase().includes("cerrada")
+                      ? "rgba(211, 47, 47, 0.20)"
+                      : "rgba(28, 160, 80, 0.18)",
+                    color: mensajeComprobante.toLowerCase().includes("cerrada")
+                      ? "#ff8a80"
+                      : "#7ff0a5",
+                    fontSize: "clamp(19px, 4.8vw, 24px)",
+                    fontWeight: 800,
+                    lineHeight: 1.35,
+                    textAlign: "center",
+                  }}
+                >
+                  {mensajeComprobante}
+                </div>
+              )}
+
               {!esAdmin && (
                 <div className="formulario-comprobante">
                   <h2>Enviar comprobante de pago</h2>
@@ -2943,12 +2972,6 @@ function App() {
                   </section>
                   )}
 </>
-              )}
-
-              {mensajeComprobante && (
-                <p className="mensaje-jugadas">
-                  {mensajeComprobante}
-                </p>
               )}
 
               {cargandoComprobantes ? (

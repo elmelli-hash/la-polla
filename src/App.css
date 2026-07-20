@@ -2726,3 +2726,27 @@ textarea::placeholder {
     background: #101010;
   }
 }
+.mensaje-comprobante-destacado {
+  width: 100%;
+  margin: 0 0 24px 0;
+  padding: 18px 20px;
+  box-sizing: border-box;
+
+  background: rgba(211, 47, 47, 0.18);
+  border: 2px solid #ef5350;
+  border-radius: 14px;
+
+  color: #ff8a80;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .mensaje-comprobante-destacado {
+    margin-bottom: 18px;
+    padding: 16px;
+    font-size: 19px;
+  }
+}
