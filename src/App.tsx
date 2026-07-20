@@ -32,23 +32,28 @@ const formatearFecha = (fecha?: string | null) => {
 const formatearFechaHora = (fecha?: string | null) => {
   if (!fecha) return "Sin fecha";
 
+  // Los timestamps de Supabase se guardan en UTC.
+  // Esta conversión aplica UTC-3 manualmente para que el resultado no
+  // dependa de cómo Chrome interprete la zona horaria del dispositivo.
   const fechaNormalizada = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(fecha)
     ? fecha
     : `${fecha}Z`;
 
-  const valor = new Date(fechaNormalizada);
+  const fechaUtc = new Date(fechaNormalizada);
 
-  if (Number.isNaN(valor.getTime())) return "Sin fecha";
+  if (Number.isNaN(fechaUtc.getTime())) return "Sin fecha";
 
-  return new Intl.DateTimeFormat("es-AR", {
-    timeZone: ZONA_HORARIA_ARGENTINA,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(valor);
+  const fechaArgentina = new Date(
+    fechaUtc.getTime() - 3 * 60 * 60 * 1000
+  );
+
+  const dia = String(fechaArgentina.getUTCDate()).padStart(2, "0");
+  const mes = String(fechaArgentina.getUTCMonth() + 1).padStart(2, "0");
+  const anio = fechaArgentina.getUTCFullYear();
+  const hora = String(fechaArgentina.getUTCHours()).padStart(2, "0");
+  const minutos = String(fechaArgentina.getUTCMinutes()).padStart(2, "0");
+
+  return `${dia}/${mes}/${anio}, ${hora}:${minutos}`;
 };
 
 const obtenerFechaArgentinaISO = () => {
@@ -166,16 +171,6 @@ function App() {
   const semanaAbierta = useMemo(
     () => semanas.find((item) => item.estado === "abierta"),
     [semanas]
-  );
-
-  const comprobanteSemanaSeleccionada = useMemo(
-    () =>
-      comprobantes.find(
-        (item) =>
-          item.usuario_id === usuario?.id &&
-          item.semana_id === semanaComprobante
-      ) ?? null,
-    [comprobantes, semanaComprobante, usuario?.id]
   );
 
   const login = async () => {
@@ -1369,26 +1364,15 @@ function App() {
       return;
     }
 
-    const { data: comprobanteExistente, error: errorVerificacion } =
-      await supabase
-        .from("comprobantes")
-        .select("id, estado")
-        .eq("usuario_id", usuario.id)
-        .eq("semana_id", semanaComprobante)
-        .limit(1)
-        .maybeSingle();
-
-    if (errorVerificacion) {
-      setMensajeComprobante(
-        "No se pudo verificar si ya existe un comprobante: " +
-          errorVerificacion.message
-      );
-      return;
-    }
+    const comprobanteExistente = comprobantes.some(
+      (item) =>
+        item.usuario_id === usuario.id &&
+        item.semana_id === semanaComprobante
+    );
 
     if (comprobanteExistente) {
       setMensajeComprobante(
-        "Ya tenés un comprobante subido para esta semana. Solo se permite un comprobante por usuario y por semana."
+        "Ya tenés un comprobante cargado para esta semana. Solo se permite uno por usuario."
       );
       return;
     }
@@ -1472,11 +1456,9 @@ function App() {
     setReinicioArchivoComprobante((valor) => valor + 1);
     setSubiendoComprobante(false);
     await cargarComprobantes();
-    const mensajeExito =
-      "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada.";
-
-    setMensajeComprobante(mensajeExito);
-    window.alert(mensajeExito);
+    setMensajeComprobante(
+      "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada."
+    );
   };
 
   const abrirComprobante = async (item: Comprobante) => {
@@ -2696,31 +2678,12 @@ function App() {
                     </select>
                   </label>
 
-                  {comprobanteSemanaSeleccionada && (
-                    <div
-                      role="status"
-                      style={{
-                        margin: "4px 0 16px",
-                        padding: "14px 16px",
-                        borderRadius: "12px",
-                        border: "2px solid #f0b429",
-                        background: "rgba(240, 180, 41, 0.16)",
-                        color: "#ffd36a",
-                        fontWeight: 800,
-                        textAlign: "center",
-                      }}
-                    >
-                      Ya hay un comprobante subido para esta semana. No podés subir otro.
-                    </div>
-                  )}
-
                   <label>
                     Archivo JPG, PNG o PDF
                     <input
                       key={reinicioArchivoComprobante}
                       type="file"
                       accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
-                      disabled={Boolean(comprobanteSemanaSeleccionada)}
                       onChange={(e) =>
                         setArchivoComprobante(
                           e.target.files?.[0] ?? null
@@ -2730,57 +2693,19 @@ function App() {
                   </label>
 
                   <p className="ayuda-comprobante">
-                    Tamaño máximo: 10 MB. Se permite un solo comprobante
+                    Tamaño máximo: 10 MB. Solo se permite un comprobante
                     por usuario y por semana.
                   </p>
 
                   <button
                     className="guardar"
                     onClick={subirComprobante}
-                    disabled={
-                      subiendoComprobante ||
-                      Boolean(comprobanteSemanaSeleccionada)
-                    }
+                    disabled={subiendoComprobante}
                   >
                     {subiendoComprobante
                       ? "Subiendo..."
-                      : comprobanteSemanaSeleccionada
-                        ? "Comprobante ya enviado"
-                        : "Enviar comprobante"}
+                      : "Enviar comprobante"}
                   </button>
-
-                  {mensajeComprobante && (
-                    <div
-                      role="alert"
-                      aria-live="assertive"
-                      style={{
-                        marginTop: "16px",
-                        padding: "16px 18px",
-                        borderRadius: "12px",
-                        border: mensajeComprobante.toLowerCase().includes("no se pudo") ||
-                          mensajeComprobante.toLowerCase().includes("cerrada") ||
-                          mensajeComprobante.toLowerCase().includes("elegí") ||
-                          mensajeComprobante.toLowerCase().includes("seleccioná") ||
-                          mensajeComprobante.toLowerCase().includes("ya tenés")
-                          ? "2px solid #ef5350"
-                          : "2px solid #39c56b",
-                        background: mensajeComprobante.toLowerCase().includes("no se pudo") ||
-                          mensajeComprobante.toLowerCase().includes("cerrada") ||
-                          mensajeComprobante.toLowerCase().includes("elegí") ||
-                          mensajeComprobante.toLowerCase().includes("seleccioná") ||
-                          mensajeComprobante.toLowerCase().includes("ya tenés")
-                          ? "rgba(211, 47, 47, 0.20)"
-                          : "rgba(28, 160, 80, 0.20)",
-                        color: "#ffffff",
-                        fontSize: "18px",
-                        fontWeight: 800,
-                        lineHeight: 1.4,
-                        textAlign: "center",
-                      }}
-                    >
-                      {mensajeComprobante}
-                    </div>
-                  )}
                 </div>
               )}
 
