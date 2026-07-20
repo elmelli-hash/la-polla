@@ -130,6 +130,8 @@ function App() {
   const [semanaComprobante, setSemanaComprobante] = useState("");
   const [archivoComprobante, setArchivoComprobante] =
     useState<File | null>(null);
+  const [reinicioArchivoComprobante, setReinicioArchivoComprobante] =
+    useState(0);
   const [cargandoComprobantes, setCargandoComprobantes] =
     useState(false);
   const [subiendoComprobante, setSubiendoComprobante] =
@@ -1457,11 +1459,8 @@ function App() {
     }
 
     setArchivoComprobante(null);
-    setMensajeComprobante(
-      existente
-        ? "Comprobante reemplazado. Quedó pendiente de revisión."
-        : "Comprobante enviado. Quedó pendiente de revisión."
-    );
+    setReinicioArchivoComprobante((valor) => valor + 1);
+    setMensajeComprobante("Comprobante subido exitosamente");
     setSubiendoComprobante(false);
     await cargarComprobantes();
   };
@@ -1480,6 +1479,60 @@ function App() {
     }
 
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const eliminarComprobanteUsuario = async (item: Comprobante) => {
+    if (!usuario || esAdmin || item.usuario_id !== usuario.id) return;
+
+    const semana = semanas.find((dato) => dato.id === item.semana_id);
+
+    if (!semana || semana.estado !== "abierta") {
+      setMensajeComprobante(
+        "La semana está cerrada. No se puede eliminar el comprobante."
+      );
+      return;
+    }
+
+    const confirmar = window.confirm(
+      "¿Eliminar este comprobante? Después vas a poder subir uno nuevo."
+    );
+
+    if (!confirmar) return;
+
+    setMensajeComprobante("Eliminando comprobante...");
+
+    const { error } = await supabase
+      .from("comprobantes")
+      .delete()
+      .eq("id", item.id)
+      .eq("usuario_id", usuario.id);
+
+    if (error) {
+      setMensajeComprobante(
+        "No se pudo eliminar el comprobante: " + error.message
+      );
+      return;
+    }
+
+    if (item.archivo_url) {
+      const { error: errorArchivo } = await supabase.storage
+        .from("Comprobantes")
+        .remove([item.archivo_url]);
+
+      if (errorArchivo) {
+        console.error(
+          "El comprobante se eliminó, pero no se pudo borrar el archivo del almacenamiento:",
+          errorArchivo.message
+        );
+      }
+    }
+
+    setArchivoComprobante(null);
+    setReinicioArchivoComprobante((valor) => valor + 1);
+    setMensajeComprobante(
+      "Comprobante eliminado. Ya podés subir uno nuevo."
+    );
+    await cargarComprobantes();
   };
 
   const revisarComprobante = async (
@@ -2632,6 +2685,7 @@ function App() {
                   <label>
                     Archivo JPG, PNG o PDF
                     <input
+                      key={reinicioArchivoComprobante}
                       type="file"
                       accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
                       onChange={(e) =>
@@ -3233,12 +3287,29 @@ function App() {
                           </span>
                         </div>
 
-                        <button
-                          className="boton-ver-archivo boton-compacto"
-                          onClick={() => abrirComprobante(item)}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "12px",
+                            flexWrap: "wrap",
+                          }}
                         >
-                          Ver archivo
-                        </button>
+                          <button
+                            className="boton-ver-archivo boton-compacto"
+                            onClick={() => abrirComprobante(item)}
+                          >
+                            Ver archivo
+                          </button>
+
+                          {semanaEstaAbierta && (
+                            <button
+                              className="boton-eliminar-definitivo boton-compacto"
+                              onClick={() => eliminarComprobanteUsuario(item)}
+                            >
+                              Eliminar comprobante
+                            </button>
+                          )}
+                        </div>
 
                         {item.observacion && (
                           <div className="observacion-usuario">
