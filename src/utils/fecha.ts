@@ -1,44 +1,76 @@
+const ZONA_HORARIA_ARGENTINA = 'America/Argentina/Buenos_Aires'
+
 /**
- * Formatea fechas para mostrarlas en Argentina sin alterar el día por zona horaria.
- * Acepta valores ISO como YYYY-MM-DD o timestamps completos.
+ * Formatea fechas guardadas como YYYY-MM-DD.
+ * No usa new Date() para evitar que cambie un día por diferencia horaria.
  */
-export function formatearFecha(valor?: string | null): string {
-  if (!valor) return "Sin fecha";
+export function formatearFecha(fecha?: string | null): string {
+  if (!fecha) return 'Sin fecha'
 
-  const fechaSimple = valor.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (fechaSimple) {
-    const [, anio, mes, dia] = fechaSimple;
-    return `${dia}/${mes}/${anio}`;
-  }
+  const fechaLimpia = fecha.slice(0, 10)
+  const partes = fechaLimpia.split('-')
 
-  const fecha = new Date(valor);
-  if (Number.isNaN(fecha.getTime())) return valor;
+  if (partes.length !== 3) return fecha
 
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(fecha);
+  const [anio, mes, dia] = partes
+
+  if (!anio || !mes || !dia) return fecha
+
+  return `${dia.padStart(2, '0')}/${mes.padStart(2, '0')}/${anio}`
 }
 
-/** Formatea timestamps como DD/MM/AAAA HH:mm. */
-export function formatearFechaHora(valor?: string | null): string {
-  if (!valor) return "Sin fecha";
+/**
+ * Formatea timestamps de Supabase usando hora argentina.
+ */
+export function formatearFechaHora(fecha?: string | null): string {
+  if (!fecha) return 'Sin fecha'
 
-  const fecha = new Date(valor);
-  if (Number.isNaN(fecha.getTime())) return formatearFecha(valor);
+  const valor = new Date(fecha)
 
-  const fechaTexto = new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(fecha);
+  if (Number.isNaN(valor.getTime())) return 'Sin fecha'
 
-  const horaTexto = new Intl.DateTimeFormat("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit",
+  return new Intl.DateTimeFormat('es-AR', {
+    timeZone: ZONA_HORARIA_ARGENTINA,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
-  }).format(fecha);
+  }).format(valor)
+}
 
-  return `${fechaTexto} ${horaTexto}`;
+/**
+ * Devuelve la fecha actual de Argentina como YYYY-MM-DD.
+ * Se usa como valor interno de input type="date".
+ */
+export function obtenerFechaArgentinaISO(): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA_HORARIA_ARGENTINA,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const anio = partes.find((parte) => parte.type === 'year')?.value
+  const mes = partes.find((parte) => parte.type === 'month')?.value
+  const dia = partes.find((parte) => parte.type === 'day')?.value
+
+  if (!anio || !mes || !dia) {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  return `${anio}-${mes}-${dia}`
+}
+
+/**
+ * Devuelve correctamente el día de la semana para una fecha YYYY-MM-DD.
+ * Domingo = 0, lunes = 1, martes = 2...
+ */
+export function obtenerDiaSemana(fecha: string): number {
+  const [anio, mes, dia] = fecha.split('-').map(Number)
+
+  if (!anio || !mes || !dia) return -1
+
+  return new Date(anio, mes - 1, dia, 12, 0, 0).getDay()
 }

@@ -17,6 +17,63 @@ import DashboardUsuario from "./pages/Usuario/DashboardUsuario";
 import UsuariosAdmin from "./pages/Admin/UsuariosAdmin";
 import JugadasPage from "./pages/Compartido/JugadasPage";
 
+const ZONA_HORARIA_ARGENTINA = "America/Argentina/Buenos_Aires";
+
+const formatearFecha = (fecha?: string | null) => {
+  if (!fecha) return "Sin fecha";
+
+  const [anio, mes, dia] = fecha.slice(0, 10).split("-");
+
+  if (!anio || !mes || !dia) return fecha;
+
+  return `${dia.padStart(2, "0")}/${mes.padStart(2, "0")}/${anio}`;
+};
+
+const formatearFechaHora = (fecha?: string | null) => {
+  if (!fecha) return "Sin fecha";
+
+  const valor = new Date(fecha);
+
+  if (Number.isNaN(valor.getTime())) return "Sin fecha";
+
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: ZONA_HORARIA_ARGENTINA,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(valor);
+};
+
+const obtenerFechaArgentinaISO = () => {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ZONA_HORARIA_ARGENTINA,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const anio = partes.find((parte) => parte.type === "year")?.value;
+  const mes = partes.find((parte) => parte.type === "month")?.value;
+  const dia = partes.find((parte) => parte.type === "day")?.value;
+
+  if (!anio || !mes || !dia) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return `${anio}-${mes}-${dia}`;
+};
+
+const obtenerDiaSemana = (fecha: string) => {
+  const [anio, mes, dia] = fecha.split("-").map(Number);
+
+  if (!anio || !mes || !dia) return -1;
+
+  return new Date(anio, mes - 1, dia, 12, 0, 0).getDay();
+};
+
 function App() {
   // LOGIN
   const [email, setEmail] = useState("");
@@ -62,7 +119,7 @@ function App() {
   const [semanaNumeros, setSemanaNumeros] = useState("");
   const [nuevoNumeroSalido, setNuevoNumeroSalido] = useState("");
   const [fechaNumeroSalido, setFechaNumeroSalido] = useState(
-    new Date().toISOString().slice(0, 10)
+    obtenerFechaArgentinaISO()
   );
   const [cargandoNumeros, setCargandoNumeros] = useState(false);
   const [guardandoNumero, setGuardandoNumero] = useState(false);
@@ -1063,8 +1120,7 @@ function App() {
       return;
     }
 
-    const fechaSeleccionada = new Date(`${fechaNumeroSalido}T12:00:00`);
-    const diaSemana = fechaSeleccionada.getDay();
+    const diaSemana = obtenerDiaSemana(fechaNumeroSalido);
 
     if (diaSemana < 2 || diaSemana > 6) {
       setMensajeNumero(
@@ -1638,9 +1694,7 @@ function App() {
               ? "Habilitación manual"
               : `Comprobante ${item.estado}`,
           item.observacion ?? "",
-          item.created_at
-            ? new Date(item.created_at).toLocaleString("es-AR")
-            : "",
+          item.created_at ? formatearFechaHora(item.created_at) : "",
           archivoIncluido,
         ]);
       }
@@ -1676,7 +1730,7 @@ function App() {
           semana.nombre,
           String(usuarioItem?.max_jugadas_semana ?? 1),
           autorizacion.created_at
-            ? new Date(autorizacion.created_at).toLocaleString("es-AR")
+            ? formatearFechaHora(autorizacion.created_at)
             : "",
           autorizacion.motivo ?? "Habilitación manual sin comprobante aprobado",
           comprobante?.estado ?? "Sin comprobante",
@@ -1690,7 +1744,7 @@ function App() {
           "Habilitación manual sin comprobante aprobado",
           autorizacion.motivo ?? "",
           autorizacion.created_at
-            ? new Date(autorizacion.created_at).toLocaleString("es-AR")
+            ? formatearFechaHora(autorizacion.created_at)
             : "",
           "Sin archivo — habilitación manual",
         ]);
@@ -2264,8 +2318,8 @@ function App() {
                       {semanas.map((semana) => (
                         <tr key={semana.id}>
                           <td>{semana.nombre}</td>
-                          <td>{semana.fecha_inicio}</td>
-                          <td>{semana.fecha_fin}</td>
+                          <td>{formatearFecha(semana.fecha_inicio)}</td>
+                          <td>{formatearFecha(semana.fecha_fin)}</td>
 
                           <td>
                             <div className="pozo-tabla">
@@ -2425,7 +2479,7 @@ function App() {
 
                     {semanas.map((semana) => (
                       <option key={semana.id} value={semana.id}>
-                        {semana.nombre} — {semana.fecha_inicio} al {semana.fecha_fin} — {semana.estado}
+                        {semana.nombre} — {formatearFecha(semana.fecha_inicio)} al {formatearFecha(semana.fecha_fin)} — {semana.estado}
                       </option>
                     ))}
                   </select>
@@ -2497,7 +2551,7 @@ function App() {
                         <span>{item.numero}</span>
 
                         <div>
-                          <small>{item.fecha}</small>
+                          <small>{formatearFecha(item.fecha)}</small>
                           <button
                             onClick={() =>
                               eliminarNumeroSalido(item)
@@ -2928,18 +2982,7 @@ function App() {
                         <strong>{nombreUsuario(item.usuario_id)}</strong>
                         <span>{nombreSemanaPorId(item.semana_id)}</span>
                         <small>
-                          {item.created_at
-                            ? new Date(item.created_at).toLocaleString(
-                                "es-AR",
-                                {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "2-digit",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }
-                              )
-                            : "Sin fecha"}
+                          {formatearFechaHora(item.created_at)}
                         </small>
 
                         <button
@@ -3062,11 +3105,7 @@ function App() {
                           {nombreSemanaPorId(item.semana_id)}
                         </span>
                         <span>
-                          {item.created_at
-                            ? new Date(
-                                item.created_at
-                              ).toLocaleDateString("es-AR")
-                            : "Sin fecha"}
+                          {formatearFechaHora(item.created_at)}
                         </span>
                         <span
                           className={`estado-comprobante ${item.estado}`}
@@ -3158,11 +3197,7 @@ function App() {
                             </h3>
                             <small>
                               Enviado:{" "}
-                              {item.created_at
-                                ? new Date(
-                                    item.created_at
-                                  ).toLocaleString("es-AR")
-                                : "Sin fecha"}
+                              {formatearFechaHora(item.created_at)}
                             </small>
                           </div>
 
