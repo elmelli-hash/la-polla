@@ -90,6 +90,7 @@ function App() {
   const [mensaje, setMensaje] = useState("");
   const [cargando, setCargando] = useState(false);
   const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [cargandoSesion, setCargandoSesion] = useState(true);
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombreRegistro, setNombreRegistro] = useState("");
   const [confirmarPassword, setConfirmarPassword] = useState("");
@@ -173,6 +174,29 @@ function App() {
     () => semanas.find((item) => item.estado === "abierta"),
     [semanas]
   );
+
+  const recuperarUsuarioSesion = async (correoSesion: string) => {
+    const correo = correoSesion.trim().toLowerCase();
+
+    const { data, error } = await supabase
+      .from("usuarios")
+      .select(
+        "id, nombre, email, rol, habilitado, aprobado, max_jugadas_semana"
+      )
+      .ilike("email", correo)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data || !data.aprobado || !data.habilitado) {
+      setUsuario(null);
+      await supabase.auth.signOut();
+      return false;
+    }
+
+    setUsuario(data as Usuario);
+    setMensaje("");
+    return true;
+  };
 
   const login = async () => {
     if (!email.trim() || !password) {
@@ -1865,6 +1889,55 @@ function App() {
     "Semana desconocida";
 
   useEffect(() => {
+    let activo = true;
+
+    const restaurarSesion = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error || !data.session?.user?.email) {
+          if (activo) setUsuario(null);
+          return;
+        }
+
+        if (activo) {
+          await recuperarUsuarioSesion(data.session.user.email);
+        }
+      } finally {
+        if (activo) setCargandoSesion(false);
+      }
+    };
+
+    void restaurarSesion();
+
+    const { data: suscripcion } = supabase.auth.onAuthStateChange(
+      (evento, sesion) => {
+        if (!activo) return;
+
+        if (evento === "SIGNED_OUT" || !sesion?.user?.email) {
+          setUsuario(null);
+          setCargandoSesion(false);
+          return;
+        }
+
+        if (evento === "SIGNED_IN" || evento === "TOKEN_REFRESHED") {
+          window.setTimeout(() => {
+            if (!activo) return;
+            void recuperarUsuarioSesion(sesion.user.email ?? "").finally(() => {
+              if (activo) setCargandoSesion(false);
+            });
+          }, 0);
+        }
+      }
+    );
+
+    return () => {
+      activo = false;
+      suscripcion.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!usuario) return;
 
     if (seccion === "dashboard") {
@@ -2092,6 +2165,17 @@ function App() {
     const hasta = Math.min(pagina * elementosPorPagina, total);
     return `${desde}-${hasta}`;
   };
+
+  if (cargandoSesion) {
+    return (
+      <div className="app">
+        <div className="login-card">
+          <h1>LA POLLA</h1>
+          <p>Recuperando sesión...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (usuario) {
     return (
