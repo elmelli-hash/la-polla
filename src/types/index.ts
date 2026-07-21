@@ -75,4 +75,5 @@ export type Seccion =
   | "semanas"
   | "jugadas"
   | "numeros"
-  | "comprobantes";
+  | "comprobantes"
+  | "notificaciones";

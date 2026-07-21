@@ -16,6 +16,7 @@ import { activarNotificacionesPush } from "./services/notificaciones";
 import DashboardAdmin from "./pages/Admin/DashboardAdmin";
 import DashboardUsuario from "./pages/Usuario/DashboardUsuario";
 import UsuariosAdmin from "./pages/Admin/UsuariosAdmin";
+import NotificacionesAdmin from "./pages/Admin/NotificacionesAdmin";
 import JugadasPage from "./pages/Compartido/JugadasPage";
 
 const ZONA_HORARIA_ARGENTINA = "America/Argentina/Buenos_Aires";
@@ -84,6 +85,11 @@ const obtenerDiaSemana = (fecha: string) => {
   return new Date(anio, mes - 1, dia, 12, 0, 0).getDay();
 };
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 function App() {
   // LOGIN
   const [email, setEmail] = useState("");
@@ -97,6 +103,8 @@ function App() {
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombreRegistro, setNombreRegistro] = useState("");
   const [confirmarPassword, setConfirmarPassword] = useState("");
+  const [eventoInstalacion, setEventoInstalacion] = useState<BeforeInstallPromptEvent | null>(null);
+  const [appInstalada, setAppInstalada] = useState(false);
 
   // NAVEGACIÓN
   const [seccion, setSeccion] = useState<Seccion>("dashboard");
@@ -196,6 +204,50 @@ function App() {
     const perfil = data as Usuario;
     setUsuario(perfil);
     return perfil;
+  };
+
+  useEffect(() => {
+    const estaInstalada =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+
+    setAppInstalada(estaInstalada);
+
+    const guardarEvento = (evento: Event) => {
+      evento.preventDefault();
+      setEventoInstalacion(evento as BeforeInstallPromptEvent);
+    };
+
+    const confirmarInstalacion = () => {
+      setAppInstalada(true);
+      setEventoInstalacion(null);
+    };
+
+    window.addEventListener("beforeinstallprompt", guardarEvento);
+    window.addEventListener("appinstalled", confirmarInstalacion);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", guardarEvento);
+      window.removeEventListener("appinstalled", confirmarInstalacion);
+    };
+  }, []);
+
+  const instalarAplicacion = async () => {
+    if (eventoInstalacion) {
+      await eventoInstalacion.prompt();
+      const eleccion = await eventoInstalacion.userChoice;
+
+      if (eleccion.outcome === "accepted") {
+        setAppInstalada(true);
+      }
+
+      setEventoInstalacion(null);
+      return;
+    }
+
+    alert(
+      "Para instalar La Polla, abrí el menú de Chrome (⋮) y elegí ‘Instalar aplicación’ o ‘Agregar a pantalla principal’."
+    );
   };
 
   useEffect(() => {
@@ -2229,6 +2281,10 @@ function App() {
                 <button className={seccion === "numeros" ? "activo" : ""} onClick={() => setSeccion("numeros")}>
                   🔢 Números salidos
                 </button>
+
+                <button className={seccion === "notificaciones" ? "activo" : ""} onClick={() => setSeccion("notificaciones")}>
+                  🔔 Enviar avisos
+                </button>
 </>
             )}
 
@@ -2256,6 +2312,7 @@ function App() {
                   (esAdmin ? "Jugadas" : "Mis jugadas")}
                 {seccion === "numeros" && "Números salidos"}
                 {seccion === "comprobantes" && "Comprobantes"}
+                {seccion === "notificaciones" && "Enviar notificaciones"}
               </h1>
 
               <p>Bienvenido, {usuario.nombre}</p>
@@ -2270,17 +2327,21 @@ function App() {
                 flexWrap: "wrap",
               }}
             >
+              {!appInstalada && (
+                <div className="instalar-pwa-renglon">
+                  <span>📲 Instalar La Polla</span>
+                  <button type="button" onClick={instalarAplicacion}>
+                    Instalar
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
+                className="boton-activar-notificaciones"
                 onClick={activarNotificaciones}
                 disabled={activandoNotificaciones}
                 title="Activar notificaciones en este dispositivo"
-                style={{
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  borderRadius: "10px",
-                  padding: "9px 12px",
-                  cursor: activandoNotificaciones ? "wait" : "pointer",
-                }}
               >
                 {activandoNotificaciones
                   ? "Activando..."
@@ -2403,6 +2464,10 @@ function App() {
               onCambiarEstado={cambiarEstadoUsuario}
               onEliminar={eliminarUsuario}
             />
+          )}
+
+          {seccion === "notificaciones" && esAdmin && (
+            <NotificacionesAdmin />
           )}
 
           {seccion === "semanas" && esAdmin && (
