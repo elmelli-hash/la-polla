@@ -12,6 +12,7 @@ import type {
   Usuario,
 } from "./types";
 import { numerosVacios } from "./utils/juego";
+import { activarNotificacionesPush } from "./services/notificaciones";
 import DashboardAdmin from "./pages/Admin/DashboardAdmin";
 import DashboardUsuario from "./pages/Usuario/DashboardUsuario";
 import UsuariosAdmin from "./pages/Admin/UsuariosAdmin";
@@ -32,19 +33,28 @@ const formatearFecha = (fecha?: string | null) => {
 const formatearFechaHora = (fecha?: string | null) => {
   if (!fecha) return "Sin fecha";
 
-  const valor = new Date(fecha);
+  // Los timestamps de Supabase se guardan en UTC.
+  // Esta conversión aplica UTC-3 manualmente para que el resultado no
+  // dependa de cómo Chrome interprete la zona horaria del dispositivo.
+  const fechaNormalizada = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(fecha)
+    ? fecha
+    : `${fecha}Z`;
 
-  if (Number.isNaN(valor.getTime())) return "Sin fecha";
+  const fechaUtc = new Date(fechaNormalizada);
 
-  return new Intl.DateTimeFormat("es-AR", {
-    timeZone: ZONA_HORARIA_ARGENTINA,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(valor);
+  if (Number.isNaN(fechaUtc.getTime())) return "Sin fecha";
+
+  const fechaArgentina = new Date(
+    fechaUtc.getTime() - 3 * 60 * 60 * 1000
+  );
+
+  const dia = String(fechaArgentina.getUTCDate()).padStart(2, "0");
+  const mes = String(fechaArgentina.getUTCMonth() + 1).padStart(2, "0");
+  const anio = fechaArgentina.getUTCFullYear();
+  const hora = String(fechaArgentina.getUTCHours()).padStart(2, "0");
+  const minutos = String(fechaArgentina.getUTCMinutes()).padStart(2, "0");
+
+  return `${dia}/${mes}/${anio}, ${hora}:${minutos}`;
 };
 
 const obtenerFechaArgentinaISO = () => {
@@ -81,6 +91,9 @@ function App() {
   const [mensaje, setMensaje] = useState("");
   const [cargando, setCargando] = useState(false);
   const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [cargandoSesion, setCargandoSesion] = useState(true);
+  const [activandoNotificaciones, setActivandoNotificaciones] = useState(false);
+  const [mensajeNotificaciones, setMensajeNotificaciones] = useState("");
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombreRegistro, setNombreRegistro] = useState("");
   const [confirmarPassword, setConfirmarPassword] = useState("");
@@ -130,11 +143,14 @@ function App() {
   const [semanaComprobante, setSemanaComprobante] = useState("");
   const [archivoComprobante, setArchivoComprobante] =
     useState<File | null>(null);
+  const [reinicioArchivoComprobante, setReinicioArchivoComprobante] =
+    useState(0);
   const [cargandoComprobantes, setCargandoComprobantes] =
     useState(false);
   const [subiendoComprobante, setSubiendoComprobante] =
     useState(false);
   const [mensajeComprobante, setMensajeComprobante] = useState("");
+  const [mensajeExitoComprobante, setMensajeExitoComprobante] = useState("");
   const [observacionesComprobantes, setObservacionesComprobantes] =
     useState<Record<string, string>>({});
   const [autorizacionesJuego, setAutorizacionesJuego] =
@@ -161,6 +177,77 @@ function App() {
     () => semanas.find((item) => item.estado === "abierta"),
     [semanas]
   );
+
+  const cargarPerfilPorCorreo = async (correo: string) => {
+    const { data, error } = await supabase
+      .from("usuarios")
+      .select(
+        "id, nombre, email, rol, habilitado, aprobado, max_jugadas_semana"
+      )
+      .ilike("email", correo.trim().toLowerCase())
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data || !data.aprobado || !data.habilitado) {
+      setUsuario(null);
+      return null;
+    }
+
+    const perfil = data as Usuario;
+    setUsuario(perfil);
+    return perfil;
+  };
+
+  useEffect(() => {
+    let activo = true;
+
+    const restaurarSesion = async () => {
+      const { data } = await supabase.auth.getSession();
+      const correo = data.session?.user?.email;
+
+      if (activo && correo) {
+        const perfil = await cargarPerfilPorCorreo(correo);
+        if (!perfil) await supabase.auth.signOut();
+      }
+
+      if (activo) setCargandoSesion(false);
+    };
+
+    restaurarSesion();
+
+    const { data: suscripcion } = supabase.auth.onAuthStateChange(
+      async (_evento, sesion) => {
+        if (!activo) return;
+
+        const correo = sesion?.user?.email;
+        if (!correo) {
+          setUsuario(null);
+          setCargandoSesion(false);
+          return;
+        }
+
+        await cargarPerfilPorCorreo(correo);
+        setCargandoSesion(false);
+      }
+    );
+
+    return () => {
+      activo = false;
+      suscripcion.subscription.unsubscribe();
+    };
+  }, []);
+
+  const activarNotificaciones = async () => {
+    if (!usuario) return;
+
+    setActivandoNotificaciones(true);
+    setMensajeNotificaciones("Activando notificaciones...");
+
+    const resultado = await activarNotificacionesPush(usuario.id);
+
+    setMensajeNotificaciones(resultado.mensaje);
+    setActivandoNotificaciones(false);
+  };
 
   const login = async () => {
     if (!email.trim() || !password) {
@@ -1299,7 +1386,6 @@ function App() {
     if (!usuario) return;
 
     setCargandoComprobantes(true);
-    setMensajeComprobante("");
 
     let consulta = supabase
       .from("comprobantes")
@@ -1337,6 +1423,7 @@ function App() {
     if (!usuario) return;
 
     setMensajeComprobante("");
+    setMensajeExitoComprobante("");
 
     if (!semanaComprobante) {
       setMensajeComprobante("Seleccioná una semana");
@@ -1350,6 +1437,29 @@ function App() {
     if (!semana || semana.estado !== "abierta") {
       setMensajeComprobante(
         "La semana está cerrada. No se puede subir ni reemplazar el comprobante."
+      );
+      return;
+    }
+
+    const { data: comprobanteExistente, error: errorConsultaExistente } =
+      await supabase
+        .from("comprobantes")
+        .select("id")
+        .eq("usuario_id", usuario.id)
+        .eq("semana_id", semanaComprobante)
+        .maybeSingle();
+
+    if (errorConsultaExistente) {
+      setMensajeComprobante(
+        "No se pudo verificar si ya existe un comprobante: " +
+          errorConsultaExistente.message
+      );
+      return;
+    }
+
+    if (comprobanteExistente) {
+      setMensajeComprobante(
+        "Ya tenés un comprobante cargado para esta semana. Solo se permite uno por usuario."
       );
       return;
     }
@@ -1406,44 +1516,17 @@ function App() {
       return;
     }
 
-    const existente = comprobantes.find(
-      (item) =>
-        item.usuario_id === usuario.id &&
-        item.semana_id === semanaComprobante
-    );
+    const resultado = await supabase
+      .from("comprobantes")
+      .insert({
+        usuario_id: usuario.id,
+        semana_id: semanaComprobante,
+        archivo_url: ruta,
+        estado: "pendiente",
+        observacion: null,
+      });
 
-    let errorBase = null;
-
-    if (existente) {
-      const resultado = await supabase
-        .from("comprobantes")
-        .update({
-          archivo_url: ruta,
-          estado: "pendiente",
-          observacion: null,
-        })
-        .eq("id", existente.id);
-
-      errorBase = resultado.error;
-
-      if (!errorBase && existente.archivo_url) {
-        await supabase.storage
-          .from("Comprobantes")
-          .remove([existente.archivo_url]);
-      }
-    } else {
-      const resultado = await supabase
-        .from("comprobantes")
-        .insert({
-          usuario_id: usuario.id,
-          semana_id: semanaComprobante,
-          archivo_url: ruta,
-          estado: "pendiente",
-          observacion: null,
-        });
-
-      errorBase = resultado.error;
-    }
+    const errorBase = resultado.error;
 
     if (errorBase) {
       await supabase.storage.from("Comprobantes").remove([ruta]);
@@ -1457,13 +1540,12 @@ function App() {
     }
 
     setArchivoComprobante(null);
-    setMensajeComprobante(
-      existente
-        ? "Comprobante reemplazado. Quedó pendiente de revisión."
-        : "Comprobante enviado. Quedó pendiente de revisión."
-    );
+    setReinicioArchivoComprobante((valor) => valor + 1);
     setSubiendoComprobante(false);
     await cargarComprobantes();
+    setMensajeExitoComprobante(
+      "Comprobante subido exitosamente. Hasta que el administrador no lo apruebe, no podés cargar tu jugada."
+    );
   };
 
   const abrirComprobante = async (item: Comprobante) => {
@@ -1480,6 +1562,60 @@ function App() {
     }
 
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const eliminarComprobanteUsuario = async (item: Comprobante) => {
+    if (!usuario || esAdmin || item.usuario_id !== usuario.id) return;
+
+    const semana = semanas.find((dato) => dato.id === item.semana_id);
+
+    if (!semana || semana.estado !== "abierta") {
+      setMensajeComprobante(
+        "La semana está cerrada. No se puede eliminar el comprobante."
+      );
+      return;
+    }
+
+    const confirmar = window.confirm(
+      "¿Eliminar este comprobante? Después vas a poder subir uno nuevo."
+    );
+
+    if (!confirmar) return;
+
+    setMensajeComprobante("Eliminando comprobante...");
+
+    const { error } = await supabase
+      .from("comprobantes")
+      .delete()
+      .eq("id", item.id)
+      .eq("usuario_id", usuario.id);
+
+    if (error) {
+      setMensajeComprobante(
+        "No se pudo eliminar el comprobante: " + error.message
+      );
+      return;
+    }
+
+    if (item.archivo_url) {
+      const { error: errorArchivo } = await supabase.storage
+        .from("Comprobantes")
+        .remove([item.archivo_url]);
+
+      if (errorArchivo) {
+        console.error(
+          "El comprobante se eliminó, pero no se pudo borrar el archivo del almacenamiento:",
+          errorArchivo.message
+        );
+      }
+    }
+
+    setArchivoComprobante(null);
+    setReinicioArchivoComprobante((valor) => valor + 1);
+    setMensajeComprobante(
+      "Comprobante eliminado. Ya podés subir uno nuevo."
+    );
+    await cargarComprobantes();
   };
 
   const revisarComprobante = async (
@@ -2032,6 +2168,17 @@ function App() {
     return `${desde}-${hasta}`;
   };
 
+  if (cargandoSesion) {
+    return (
+      <div className="app">
+        <div className="login-card">
+          <h1>LA POLLA</h1>
+          <p>Recuperando sesión...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (usuario) {
     return (
       <div className="panel">
@@ -2114,10 +2261,51 @@ function App() {
               <p>Bienvenido, {usuario.nombre}</p>
             </div>
 
-            <span className="rol">
-              {esAdmin ? "Administrador" : "Usuario"}
-            </span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={activarNotificaciones}
+                disabled={activandoNotificaciones}
+                title="Activar notificaciones en este dispositivo"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  borderRadius: "10px",
+                  padding: "9px 12px",
+                  cursor: activandoNotificaciones ? "wait" : "pointer",
+                }}
+              >
+                {activandoNotificaciones
+                  ? "Activando..."
+                  : "🔔 Activar notificaciones"}
+              </button>
+
+              <span className="rol">
+                {esAdmin ? "Administrador" : "Usuario"}
+              </span>
+            </div>
           </header>
+
+          {mensajeNotificaciones && (
+            <div
+              role="status"
+              style={{
+                marginBottom: "14px",
+                padding: "12px 14px",
+                borderRadius: "10px",
+                background: "rgba(255,255,255,0.08)",
+              }}
+            >
+              {mensajeNotificaciones}
+            </div>
+          )}
 
           {semanaTablero && (
             <section className="pozo-destacado">
@@ -2578,6 +2766,35 @@ function App() {
 
           {seccion === "comprobantes" && (
             <section className="comprobantes-seccion">
+              {mensajeComprobante && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    margin: "0 0 24px",
+                    padding: "18px 20px",
+                    borderRadius: "14px",
+                    border: mensajeComprobante.toLowerCase().includes("cerrada")
+                      ? "2px solid #ef5350"
+                      : "2px solid #39c56b",
+                    background: mensajeComprobante.toLowerCase().includes("cerrada")
+                      ? "rgba(211, 47, 47, 0.20)"
+                      : "rgba(28, 160, 80, 0.18)",
+                    color: mensajeComprobante.toLowerCase().includes("cerrada")
+                      ? "#ff8a80"
+                      : "#7ff0a5",
+                    fontSize: "clamp(19px, 4.8vw, 24px)",
+                    fontWeight: 800,
+                    lineHeight: 1.35,
+                    textAlign: "center",
+                  }}
+                >
+                  {mensajeComprobante}
+                </div>
+              )}
+
               {!esAdmin && (
                 <div className="formulario-comprobante">
                   <h2>Enviar comprobante de pago</h2>
@@ -2603,6 +2820,7 @@ function App() {
                   <label>
                     Archivo JPG, PNG o PDF
                     <input
+                      key={reinicioArchivoComprobante}
                       type="file"
                       accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
                       onChange={(e) =>
@@ -2627,6 +2845,27 @@ function App() {
                       ? "Subiendo..."
                       : "Enviar comprobante"}
                   </button>
+
+                  {mensajeExitoComprobante && (
+                    <div
+                      role="alert"
+                      aria-live="assertive"
+                      style={{
+                        marginTop: "16px",
+                        padding: "16px",
+                        borderRadius: "12px",
+                        border: "2px solid #39c56b",
+                        background: "rgba(28, 160, 80, 0.20)",
+                        color: "#7ff0a5",
+                        fontSize: "18px",
+                        fontWeight: 800,
+                        lineHeight: 1.4,
+                        textAlign: "center",
+                      }}
+                    >
+                      {mensajeExitoComprobante}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2945,12 +3184,6 @@ function App() {
 </>
               )}
 
-              {mensajeComprobante && (
-                <p className="mensaje-jugadas">
-                  {mensajeComprobante}
-                </p>
-              )}
-
               {cargandoComprobantes ? (
                 <p>Cargando comprobantes...</p>
               ) : esAdmin ? (
@@ -3210,12 +3443,29 @@ function App() {
                           </span>
                         </div>
 
-                        <button
-                          className="boton-ver-archivo boton-compacto"
-                          onClick={() => abrirComprobante(item)}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "12px",
+                            flexWrap: "wrap",
+                          }}
                         >
-                          Ver archivo
-                        </button>
+                          <button
+                            className="boton-ver-archivo boton-compacto"
+                            onClick={() => abrirComprobante(item)}
+                          >
+                            Ver archivo
+                          </button>
+
+                          {semanaEstaAbierta && (
+                            <button
+                              className="boton-eliminar-definitivo boton-compacto"
+                              onClick={() => eliminarComprobanteUsuario(item)}
+                            >
+                              Eliminar comprobante
+                            </button>
+                          )}
+                        </div>
 
                         {item.observacion && (
                           <div className="observacion-usuario">
