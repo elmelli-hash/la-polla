@@ -2299,6 +2299,42 @@ function App() {
         </aside>
 
         <main className="contenido">
+          {!appInstalada && (
+            <div
+              className="instalar-pwa-renglon"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                marginBottom: "18px",
+                padding: "18px 20px",
+                borderRadius: "16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "16px",
+                flexWrap: "wrap",
+                fontSize: "20px",
+                fontWeight: 800,
+              }}
+            >
+              <span>📲 INSTALAR LA POLLA EN ESTE DISPOSITIVO</span>
+              <button
+                type="button"
+                onClick={instalarAplicacion}
+                style={{
+                  minHeight: "48px",
+                  padding: "12px 22px",
+                  borderRadius: "12px",
+                  fontSize: "17px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Instalar ahora
+              </button>
+            </div>
+          )}
+
           <header className="encabezado">
             <div>
               <h1>
@@ -2327,15 +2363,6 @@ function App() {
                 flexWrap: "wrap",
               }}
             >
-              {!appInstalada && (
-                <div className="instalar-pwa-renglon">
-                  <span>📲 Instalar La Polla</span>
-                  <button type="button" onClick={instalarAplicacion}>
-                    Instalar
-                  </button>
-                </div>
-              )}
-
               <button
                 type="button"
                 className="boton-activar-notificaciones"
@@ -2351,6 +2378,26 @@ function App() {
               <span className="rol">
                 {esAdmin ? "Administrador" : "Usuario"}
               </span>
+
+              <button
+                type="button"
+                onClick={cerrarSesion}
+                title="Cerrar sesión"
+                style={{
+                  minHeight: "44px",
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  border: "1px solid rgba(255,255,255,0.22)",
+                  background: "rgba(255,255,255,0.10)",
+                  color: "inherit",
+                }}
+              >
+                🚪 Cerrar sesión
+              </button>
             </div>
           </header>
 
