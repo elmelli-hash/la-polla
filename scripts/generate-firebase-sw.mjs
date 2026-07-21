@@ -1,14 +1,50 @@
-/* Generado automáticamente por scripts/generate-firebase-sw.mjs */
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+const envPath = path.join(root, '.env')
+
+function readEnv(file) {
+  if (!fs.existsSync(file)) return {}
+  return Object.fromEntries(
+    fs.readFileSync(file, 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && line.includes('='))
+      .map((line) => {
+        const index = line.indexOf('=')
+        const key = line.slice(0, index).trim()
+        let value = line.slice(index + 1).trim()
+        value = value.replace(/^['"]|['"]$/g, '')
+        return [key, value]
+      })
+  )
+}
+
+const localEnv = readEnv(envPath)
+const get = (key) => process.env[key] || localEnv[key] || ''
+
+const config = {
+  apiKey: get('VITE_FIREBASE_API_KEY'),
+  authDomain: get('VITE_FIREBASE_AUTH_DOMAIN'),
+  projectId: get('VITE_FIREBASE_PROJECT_ID'),
+  storageBucket: get('VITE_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: get('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: get('VITE_FIREBASE_APP_ID'),
+}
+
+const faltantes = Object.entries(config)
+  .filter(([, value]) => !value)
+  .map(([key]) => key)
+
+if (faltantes.length) {
+  console.warn(`Aviso: faltan variables Firebase para el Service Worker: ${faltantes.join(', ')}`)
+}
+
+const output = `/* Generado automáticamente por scripts/generate-firebase-sw.mjs */
 /* global firebase, clients */
 
-const firebaseConfig = {
-  "apiKey": "AIzaSyDhjClEDQmyMl-pqUd84aI55r5EU99An7s",
-  "authDomain": "la-polla-notificaciones.firebaseapp.com",
-  "projectId": "la-polla-notificaciones",
-  "storageBucket": "la-polla-notificaciones.firebasestorage.app",
-  "messagingSenderId": "312807602596",
-  "appId": "1:312807602596:web:2eaf6fe4c11c0c08e66931"
-};
+const firebaseConfig = ${JSON.stringify(config, null, 2)};
 let messaging = null;
 
 try {
@@ -57,3 +93,7 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+`
+
+fs.writeFileSync(path.join(root, 'public', 'firebase-messaging-sw.js'), output)
+console.log('Service Worker de Firebase generado correctamente.')

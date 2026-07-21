@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predev": "node scripts/generate-firebase-sw.mjs",
+    "prebuild": "node scripts/generate-firebase-sw.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.1",

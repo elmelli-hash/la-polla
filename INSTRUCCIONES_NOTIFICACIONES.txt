@@ -1,0 +1,20 @@
+LA POLLA - NOTIFICACIONES Y PWA
+
+1) Abrí la carpeta en VS Code.
+2) Ejecutá: npm install
+3) Ejecutá: npm run build
+4) Si compila, subí los cambios a GitHub/Vercel.
+5) En el celular, borrá los datos anteriores del sitio antes de probar nuevamente.
+
+IMPORTANTE:
+El Service Worker ahora se genera automáticamente antes de npm run dev y npm run build.
+La configuración está centralizada en el archivo .env.
+
+Si Firebase muestra “API key not valid”, el código está funcionando pero la credencial no coincide.
+Copiá el bloque exacto desde:
+Firebase > Configuración del proyecto > General > Tus apps > Configuración SDK
+Y reemplazá las variables VITE_FIREBASE_* del archivo .env.
+
+Para la clave VAPID:
+Firebase > Cloud Messaging > Certificados push web
+Copiá la clave pública en VITE_FIREBASE_VAPID_KEY.
