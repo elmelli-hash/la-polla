@@ -1275,6 +1275,144 @@ function App() {
     setCargandoNumeros(false);
   };
 
+  const verificarYNotificarGanador = async (semanaId: string) => {
+    try {
+      const claveNotificacion = `ganador_notificado_${semanaId}`;
+
+      // Evita repetir el aviso desde este administrador/navegador.
+      if (localStorage.getItem(claveNotificacion) === "si") return;
+
+      const [
+        { data: jugadasSemana, error: errorJugadas },
+        { data: resultadosSemana, error: errorResultados },
+        { data: semanaDatos, error: errorSemana },
+        { data: usuariosDatos, error: errorUsuarios },
+      ] = await Promise.all([
+        supabase
+          .from("jugadas")
+          .select("*")
+          .eq("semana_id", semanaId),
+        supabase
+          .from("numeros_salidos")
+          .select("numero")
+          .eq("semana_id", semanaId),
+        supabase
+          .from("semanas")
+          .select("id, nombre")
+          .eq("id", semanaId)
+          .maybeSingle(),
+        supabase
+          .from("usuarios")
+          .select("id, nombre"),
+      ]);
+
+      if (errorJugadas || errorResultados || errorSemana || errorUsuarios) {
+        console.error("No se pudo comprobar si hay ganador:", {
+          errorJugadas,
+          errorResultados,
+          errorSemana,
+          errorUsuarios,
+        });
+        return;
+      }
+
+      const cantidadesDisponibles: Record<string, number> = {};
+
+      (resultadosSemana ?? []).forEach((item) => {
+        const numero = String(item.numero).padStart(2, "0");
+        cantidadesDisponibles[numero] =
+          (cantidadesDisponibles[numero] ?? 0) + 1;
+      });
+
+      const calcularAciertos = (jugada: Jugada) => {
+        const cantidadesUsadas: Record<string, number> = {};
+        const numerosJugada = [
+          jugada.n1,
+          jugada.n2,
+          jugada.n3,
+          jugada.n4,
+          jugada.n5,
+          jugada.n6,
+          jugada.n7,
+          jugada.n8,
+          jugada.n9,
+          jugada.n10,
+        ];
+
+        return numerosJugada.reduce((total, numeroOriginal) => {
+          const numero = String(numeroOriginal).padStart(2, "0");
+          const usados = cantidadesUsadas[numero] ?? 0;
+          const disponibles = cantidadesDisponibles[numero] ?? 0;
+
+          if (usados < disponibles) {
+            cantidadesUsadas[numero] = usados + 1;
+            return total + 1;
+          }
+
+          return total;
+        }, 0);
+      };
+
+      const ganadoras = ((jugadasSemana ?? []) as Jugada[]).filter(
+        (jugada) => calcularAciertos(jugada) === 10
+      );
+
+      if (ganadoras.length === 0) return;
+
+      const nombresPorId = new Map(
+        (usuariosDatos ?? []).map((item) => [item.id, item.nombre])
+      );
+
+      const ganadoresUnicos = Array.from(
+        new Set(
+          ganadoras.map(
+            (jugada) =>
+              nombresPorId.get(jugada.usuario_id) ?? "Usuario ganador"
+          )
+        )
+      );
+
+      const titulo = "🏆 ¡Tenemos ganador!";
+      const mensaje =
+        ganadoresUnicos.length === 1
+          ? `${ganadoresUnicos[0]} alcanzó los 10 aciertos en ${
+              semanaDatos?.nombre ?? "la semana actual"
+            }.`
+          : `${ganadoresUnicos.join(", ")} alcanzaron los 10 aciertos en ${
+              semanaDatos?.nombre ?? "la semana actual"
+            }.`;
+
+      const { error: errorNotificacion } = await supabase.functions.invoke(
+        "enviar-notificacion",
+        {
+          body: {
+            titulo,
+            mensaje,
+            url: "/",
+          },
+        }
+      );
+
+      if (errorNotificacion) {
+        console.error(
+          "Se detectó un ganador, pero no se pudo enviar la notificación:",
+          errorNotificacion
+        );
+        setMensajeNumero(
+          "Número agregado y ganador detectado, pero no se pudo enviar el aviso automático."
+        );
+        return;
+      }
+
+      localStorage.setItem(claveNotificacion, "si");
+      setMensajeNumero(
+        `Número agregado correctamente. 🏆 Se detectó ganador y se envió la notificación automática.`
+      );
+    } catch (error) {
+      console.error("Error verificando ganador:", error);
+    }
+  };
+
   const guardarNumeroSalido = async () => {
     if (!semanaNumeros) {
       setMensajeNumero("Seleccioná una semana");
@@ -1351,6 +1489,7 @@ function App() {
     );
 
     await cargarNumerosSalidos(semanaNumeros);
+    await verificarYNotificarGanador(semanaNumeros);
   };
 
   const eliminarNumeroSalido = async (item: NumeroSalido) => {
