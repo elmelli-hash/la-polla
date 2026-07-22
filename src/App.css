@@ -2925,3 +2925,11 @@ textarea::placeholder {
     justify-content: space-between;
   }
 }
+
+.boton-activar-notificaciones.esta-activo,
+.boton-activar-notificaciones.esta-activo:disabled {
+  opacity: 1;
+  cursor: default;
+  background: #185f30;
+  border-color: rgba(74, 222, 128, 0.55);
+}

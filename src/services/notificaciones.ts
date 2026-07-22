@@ -7,6 +7,18 @@ export type ResultadoActivacionNotificaciones = {
   mensaje: string;
 };
 
+export type EstadoNotificaciones =
+  | "comprobando"
+  | "activadas"
+  | "desactivadas"
+  | "bloqueadas"
+  | "no_disponibles";
+
+export type ResultadoEstadoNotificaciones = {
+  estado: EstadoNotificaciones;
+  mensaje: string;
+};
+
 const registrarServiceWorkerFirebase = async () => {
   const registro = await navigator.serviceWorker.register(
     "/firebase-messaging-sw.js",
@@ -15,6 +27,18 @@ const registrarServiceWorkerFirebase = async () => {
 
   await registro.update();
   return registro;
+};
+
+const obtenerTokenActual = async () => {
+  const registroServiceWorker = await registrarServiceWorkerFirebase();
+  const messaging = await obtenerFirebaseMessaging();
+
+  if (!messaging) return null;
+
+  return getToken(messaging, {
+    vapidKey: CLAVE_VAPID,
+    serviceWorkerRegistration: registroServiceWorker,
+  });
 };
 
 const mensajeFirebaseAmigable = (error: unknown) => {
@@ -38,6 +62,91 @@ const mensajeFirebaseAmigable = (error: unknown) => {
   }
 
   return "No se pudieron activar las notificaciones: " + detalle;
+};
+
+export const comprobarEstadoNotificaciones = async (
+  usuarioId: string
+): Promise<ResultadoEstadoNotificaciones> => {
+  try {
+    if (!window.isSecureContext) {
+      return {
+        estado: "no_disponibles",
+        mensaje: "Las notificaciones requieren HTTPS.",
+      };
+    }
+
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      return {
+        estado: "no_disponibles",
+        mensaje: "Este navegador no admite notificaciones push.",
+      };
+    }
+
+    if (Notification.permission === "denied") {
+      return {
+        estado: "bloqueadas",
+        mensaje: "Las notificaciones están bloqueadas en Chrome.",
+      };
+    }
+
+    if (Notification.permission !== "granted") {
+      return { estado: "desactivadas", mensaje: "Notificaciones desactivadas." };
+    }
+
+    const token = await obtenerTokenActual();
+
+    if (!token) {
+      return {
+        estado: "desactivadas",
+        mensaje: "Este dispositivo todavía no está registrado.",
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("dispositivos_notificaciones")
+      .select("token, activo")
+      .eq("usuario_id", usuarioId)
+      .eq("token", token)
+      .eq("activo", true)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error comprobando notificaciones:", error);
+      return {
+        estado: "desactivadas",
+        mensaje: "No se pudo comprobar el dispositivo.",
+      };
+    }
+
+    if (!data) {
+      return {
+        estado: "desactivadas",
+        mensaje: "Este dispositivo todavía no está registrado.",
+      };
+    }
+
+    // Mantiene actualizada la última actividad sin crear filas duplicadas.
+    const { error: errorActualizacion } = await supabase
+      .from("dispositivos_notificaciones")
+      .update({ updated_at: new Date().toISOString(), activo: true })
+      .eq("usuario_id", usuarioId)
+      .eq("token", token);
+
+    if (errorActualizacion) {
+      console.warn("No se pudo actualizar la última actividad:", errorActualizacion);
+    }
+
+    return {
+      estado: "activadas",
+      mensaje: "Notificaciones activadas en este dispositivo.",
+    };
+  } catch (error) {
+    console.error("Error comprobando notificaciones:", error);
+    return {
+      estado: "desactivadas",
+      mensaje: "No se pudo comprobar el estado de las notificaciones.",
+    };
+  }
 };
 
 export const activarNotificacionesPush = async (
@@ -68,35 +177,41 @@ export const activarNotificacionesPush = async (
       return { exito: false, mensaje: "No se concedió el permiso para recibir notificaciones." };
     }
 
-    const registroServiceWorker = await registrarServiceWorkerFirebase();
-    const messaging = await obtenerFirebaseMessaging();
-
-    if (!messaging) {
-      return {
-        exito: false,
-        mensaje: "Este navegador o dispositivo no es compatible con Firebase Messaging.",
-      };
-    }
-
-    const token = await getToken(messaging, {
-      vapidKey: CLAVE_VAPID,
-      serviceWorkerRegistration: registroServiceWorker,
-    });
+    const token = await obtenerTokenActual();
 
     if (!token) {
       return { exito: false, mensaje: "Firebase no pudo generar el identificador del dispositivo." };
     }
 
-    const { error } = await supabase.from("dispositivos_notificaciones").upsert(
-      {
-        usuario_id: usuarioId,
-        token,
-        navegador: navigator.userAgent,
-        activo: true,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "token" }
-    );
+    const { data: dispositivoExistente, error: errorConsulta } = await supabase
+      .from("dispositivos_notificaciones")
+      .select("token")
+      .eq("usuario_id", usuarioId)
+      .eq("token", token)
+      .maybeSingle();
+
+    if (errorConsulta) {
+      return {
+        exito: false,
+        mensaje: "Chrome quedó autorizado, pero no se pudo comprobar el dispositivo en Supabase: " + errorConsulta.message,
+      };
+    }
+
+    const datosDispositivo = {
+      usuario_id: usuarioId,
+      token,
+      navegador: navigator.userAgent,
+      activo: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = dispositivoExistente
+      ? await supabase
+          .from("dispositivos_notificaciones")
+          .update(datosDispositivo)
+          .eq("usuario_id", usuarioId)
+          .eq("token", token)
+      : await supabase.from("dispositivos_notificaciones").insert(datosDispositivo);
 
     if (error) {
       return {

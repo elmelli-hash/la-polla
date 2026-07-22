@@ -12,7 +12,11 @@ import type {
   Usuario,
 } from "./types";
 import { numerosVacios } from "./utils/juego";
-import { activarNotificacionesPush } from "./services/notificaciones";
+import {
+  activarNotificacionesPush,
+  comprobarEstadoNotificaciones,
+  type EstadoNotificaciones,
+} from "./services/notificaciones";
 import DashboardAdmin from "./pages/Admin/DashboardAdmin";
 import DashboardUsuario from "./pages/Usuario/DashboardUsuario";
 import UsuariosAdmin from "./pages/Admin/UsuariosAdmin";
@@ -100,6 +104,8 @@ function App() {
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [activandoNotificaciones, setActivandoNotificaciones] = useState(false);
   const [mensajeNotificaciones, setMensajeNotificaciones] = useState("");
+  const [estadoNotificaciones, setEstadoNotificaciones] =
+    useState<EstadoNotificaciones>("comprobando");
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombreRegistro, setNombreRegistro] = useState("");
   const [confirmarPassword, setConfirmarPassword] = useState("");
@@ -289,6 +295,31 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let vigente = true;
+
+    const comprobarNotificaciones = async () => {
+      if (!usuario) {
+        setEstadoNotificaciones("comprobando");
+        setMensajeNotificaciones("");
+        return;
+      }
+
+      setEstadoNotificaciones("comprobando");
+      const resultado = await comprobarEstadoNotificaciones(usuario.id);
+
+      if (!vigente) return;
+      setEstadoNotificaciones(resultado.estado);
+      setMensajeNotificaciones(resultado.mensaje);
+    };
+
+    comprobarNotificaciones();
+
+    return () => {
+      vigente = false;
+    };
+  }, [usuario]);
+
   const activarNotificaciones = async () => {
     if (!usuario) return;
 
@@ -298,6 +329,7 @@ function App() {
     const resultado = await activarNotificacionesPush(usuario.id);
 
     setMensajeNotificaciones(resultado.mensaje);
+    setEstadoNotificaciones(resultado.exito ? "activadas" : "desactivadas");
     setActivandoNotificaciones(false);
   };
 
@@ -2365,14 +2397,30 @@ function App() {
             >
               <button
                 type="button"
-                className="boton-activar-notificaciones"
+                className={`boton-activar-notificaciones ${
+                  estadoNotificaciones === "activadas" ? "esta-activo" : ""
+                }`}
                 onClick={activarNotificaciones}
-                disabled={activandoNotificaciones}
-                title="Activar notificaciones en este dispositivo"
+                disabled={
+                  activandoNotificaciones ||
+                  estadoNotificaciones === "comprobando" ||
+                  estadoNotificaciones === "activadas" ||
+                  estadoNotificaciones === "bloqueadas" ||
+                  estadoNotificaciones === "no_disponibles"
+                }
+                title={mensajeNotificaciones || "Activar notificaciones en este dispositivo"}
               >
                 {activandoNotificaciones
                   ? "Activando..."
-                  : "🔔 Activar notificaciones"}
+                  : estadoNotificaciones === "comprobando"
+                    ? "🔔 Comprobando..."
+                    : estadoNotificaciones === "activadas"
+                      ? "✅ Notificaciones activadas"
+                      : estadoNotificaciones === "bloqueadas"
+                        ? "🔕 Notificaciones bloqueadas"
+                        : estadoNotificaciones === "no_disponibles"
+                          ? "🔕 No disponibles"
+                          : "🔔 Activar notificaciones"}
               </button>
 
               <span className="rol">
