@@ -183,20 +183,6 @@ export const activarNotificacionesPush = async (
       return { exito: false, mensaje: "Firebase no pudo generar el identificador del dispositivo." };
     }
 
-    const { data: dispositivoExistente, error: errorConsulta } = await supabase
-      .from("dispositivos_notificaciones")
-      .select("token")
-      .eq("usuario_id", usuarioId)
-      .eq("token", token)
-      .maybeSingle();
-
-    if (errorConsulta) {
-      return {
-        exito: false,
-        mensaje: "Chrome quedó autorizado, pero no se pudo comprobar el dispositivo en Supabase: " + errorConsulta.message,
-      };
-    }
-
     const datosDispositivo = {
       usuario_id: usuarioId,
       token,
@@ -205,13 +191,11 @@ export const activarNotificacionesPush = async (
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = dispositivoExistente
-      ? await supabase
-          .from("dispositivos_notificaciones")
-          .update(datosDispositivo)
-          .eq("usuario_id", usuarioId)
-          .eq("token", token)
-      : await supabase.from("dispositivos_notificaciones").insert(datosDispositivo);
+    const { error } = await supabase
+      .from("dispositivos_notificaciones")
+      .upsert(datosDispositivo, {
+        onConflict: "token",
+      });
 
     if (error) {
       return {
